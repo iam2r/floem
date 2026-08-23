@@ -454,6 +454,7 @@ impl ApplicationHandle {
             win_os_config,
             web_config,
             font_embolden,
+            app_id,
         }: WindowConfig,
     ) {
         let logical_size = size.map(|size| LogicalSize::new(size.width, size.height));
@@ -478,6 +479,32 @@ impl ApplicationHandle {
             window_attributes = window_attributes.with_theme(override_theme);
         } else {
             window_attributes = window_attributes.with_theme(theme_override);
+        }
+
+        // Set the application name so desktop environments can associate the
+        // window with its .desktop entry (dock icon, window grouping, etc).
+        #[cfg(target_os = "linux")]
+        if let Some(app_id) = app_id.as_deref() {
+            use winit::platform::x11::WindowAttributesExtX11;
+            window_attributes = WindowAttributesExtX11::with_name(window_attributes, app_id, app_id);
+        }
+        #[cfg(target_os = "linux")]
+        if let Some(app_id) = app_id.as_deref() {
+            use winit::platform::wayland::WindowAttributesExtWayland;
+            window_attributes =
+                WindowAttributesExtWayland::with_name(window_attributes, app_id, app_id);
+        }
+
+        // Consume the launcher's activation/startup token so the desktop shell
+        // immediately associates the new window with this application (dock
+        // icon, focus) instead of waiting for its timeout.
+        #[cfg(target_os = "linux")]
+        {
+            use winit::platform::startup_notify::EventLoopExtStartupNotify;
+            if let Some(token) = event_loop.read_token_from_env() {
+                use winit::platform::startup_notify::WindowAttributesExtStartupNotify;
+                window_attributes = window_attributes.with_activation_token(token);
+            }
         }
 
         #[cfg(target_arch = "wasm32")]
